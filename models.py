@@ -15,6 +15,7 @@ FN_DB: str = os.environ['FN_DB']
 CREATED_IN: str = os.environ['createdIn']
 
 client = MongoClient('localhost', 27017) # type: MongoClient
+db = client[FN_DB]
 
 GET_HTML = lambda region : requests.get(f'https://fortnitetracker.com/events/powerrankings?platform=pc&region={region}&time=current', headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36'}).text
 
@@ -56,7 +57,6 @@ def createDbs() -> None:
     f.write(f"""\ncreatedIn = "{today.strftime("%b-%d-%Y")}" """)
     f.close()
     for serverName in FN_COLLECTIONS:
-      db = client[FN_DB]
       db[serverName].insert_one({"createdIn": today.strftime("%b-%d-%Y")})
 
 def safeGetPlayerInfos(region: str, player: str) -> dict:
@@ -80,7 +80,6 @@ def updateDbs() -> None:
     for player, twitterTag in zip(players, twitterTags):
       print(player, twitterTag)
       playerInfos = safeGetPlayerInfos(region, player)
-      db = client[FN_DB]
       if db[serverRegion].count_documents({'usernames': playerInfos['name']}) == 0: #if username is already in db
         twitterInput = input(f"""is '{playerInfos['twitter']}' {playerInfos['name']}'s twitter tag? If so, type 'y', else please enter his Twitter tag: """)
         if twitterInput != 'y':
@@ -158,21 +157,17 @@ def newLeader(data: dict) -> dict :
   return diffs
 
 def getDiffs():
-  print(f'[*] getting diffs')
-  '''for serverRegion in FN_COLLECTIONS:
+  print('[*] getting diffs')
+  for serverRegion in FN_COLLECTIONS:
     region = serverRegion.removeprefix('fn').removesuffix('players')
     print(f'\t[*] {region}')
-    db = client[FN_DB]'''
-  serverRegion = 'fnNAEplayers'
-  db = client[FN_DB]
-  cursor = db[serverRegion] # choosing the collection you need
+    
+    data = []
+    for document in db[serverRegion].find():
+      data.append(document)
+    data.pop(0)
 
-  data = []
-  for document in cursor.find():
-    data.append(document)
-  data.pop(0)
-
-  print(getHighestPrGain(data))
-  print(getHighestRankGain(data))
-  print(getHighestRankLose(data))
-  print(newLeader(data))
+    print(getHighestPrGain(data))
+    print(getHighestRankGain(data))
+    print(getHighestRankLose(data))
+    print(newLeader(data))
