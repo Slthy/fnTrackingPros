@@ -1,43 +1,42 @@
-from typing import Dict
 import requests, os, ast, time, json
-from datetime import date
+from typing import Any
 from pymongo import MongoClient
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup # type: ignore
 from os.path import join, dirname
 from dotenv import load_dotenv
+from difflib import SequenceMatcher
 
 dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
 
-FN_COLLECTIONS = ast.literal_eval(os.environ.get("FN_COLLECTIONS")) # type: ignore
 TRN_API_KEY: str = os.environ['TRN_API_KEY']
 FN_DB: str = os.environ['FN_DB']
-CREATED_IN: str = os.environ['createdIn']
+FN_COLLECTIONS = ast.literal_eval(os.environ.get("FN_COLLECTIONS")) # type: ignore
+REGIONS = ast.literal_eval(os.environ.get("REGIONS")) # type: ignore
 
 client = MongoClient('localhost', 27017) # type: MongoClient
 db = client[FN_DB]
 
 GET_HTML = lambda region : requests.get(f'https://fortnitetracker.com/events/powerrankings?platform=pc&region={region}&time=current', headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36'}).text
 
-def getPlayerInfos(region: str, name: str) -> dict:
-  headers={'TRN-Api-Key': TRN_API_KEY}
+def getPlayerInfos(region: str, name: str):
+  html = requests.get(f'https://api.fortnitetracker.com/v1/powerrankings/pc/{region}/{name}', {'TRN-Api-Key': TRN_API_KEY})
   try:
-    return json.loads(requests.get(f'https://api.fortnitetracker.com/v1/powerrankings/pc/{region}/{name}', headers).text)
+    return json.loads(html.text)
   except:
-    raise Exception
+    print(f'Api-side issue, please revert changes using the helper.py script and try again later. Error code: {html.status_code}')
+    exit()
 
 def getTop100orUnder_players(region: str, entries: int) -> list:
-  html = GET_HTML(region)
   if entries <= 100:
-    return [player.text for player in BeautifulSoup(html, features="lxml").find_all("span", class_="trn-lb-entry__name")[:entries]]
+    return [player.text for player in BeautifulSoup(GET_HTML(region), features="lxml").find_all("span", class_="trn-lb-entry__name")[:entries]]
   else:
     raise ValueError('Cant handle more than 100 entries')
 
 def getTop100orUnder_twitterTags(region: str, entries: int) -> list:
-  html = GET_HTML(region)
   if entries <= 100:
     tags: list[str] = []
-    for link in BeautifulSoup(html, features="lxml").findAll('a', {'class': 'trn-lb-entry__twitter'})[:entries]:
+    for link in BeautifulSoup(GET_HTML(region), features="lxml").findAll('a', {'class': 'trn-lb-entry__twitter'})[:entries]:
       try:
         link = link['href'].removeprefix('https://www.twitter.com/')
         tags.append(link)
@@ -46,55 +45,41 @@ def getTop100orUnder_twitterTags(region: str, entries: int) -> list:
     return tags
   else:
     raise ValueError('Cant handle more than 100 entries')
-  
-def createDbs() -> None:  
-  if 'fnTracking' in client.list_database_names():
-    print('already run setup')
-  else:
-    print('[*]creating databases\n')
-    today = date.today()
-    f = open(".env", "a")
-    f.write(f"""\ncreatedIn = "{today.strftime("%b-%d-%Y")}" """)
-    f.close()
-    for serverName in FN_COLLECTIONS:
-      db[serverName].insert_one({"createdIn": today.strftime("%b-%d-%Y")})
 
 def safeGetPlayerInfos(region: str, player: str) -> dict:
   playerInfos = getPlayerInfos(region, player)
-  exceededAPIlimitString = json.loads('{"message":"API rate limit exceeded"}')
-  trnIsUpdating = json.loads('{"status": "Try again in a few minutes. PR is updating"}')
-  while playerInfos == exceededAPIlimitString or playerInfos == trnIsUpdating:
-    print('\tNeed to cooldown... || API rate limit exceeded') if playerInfos == exceededAPIlimitString else print('\tNeed to cooldown... || PR is updating, consider another time to update db')
+  errors = [json.loads('{"message":"API rate limit exceeded"}'), json.loads('{"status": "Try again in a few minutes. PR is updating"}')]
+  while playerInfos == errors[0] or playerInfos == errors[1]:
+    print('\tNeed to cooldown... || API rate limit exceeded') if playerInfos == errors[0] else print('\tNeed to cooldown... || PR is updating, consider another time to update db')
     time.sleep(61)
     print('\t...resuming')
     playerInfos = getPlayerInfos(region, player)
   return playerInfos
 
-def updateDbs() -> None:
+def populateDbs() -> None:
   print(f'[*] updating databases')
-  for serverRegion in FN_COLLECTIONS:
-    region = serverRegion.removeprefix('fn').removesuffix('players')
+  for serverRegion, region in zip(FN_COLLECTIONS, REGIONS):
     print(f'\t[*] {region}')
     players = getTop100orUnder_players(region, 50)
     twitterTags = getTop100orUnder_twitterTags(region, 50)
-    for player, twitterTag in zip(players, twitterTags):
-      print(player, twitterTag)
+    iTwitterTag = 0
+    for player in players:
+      print(player)
       playerInfos = safeGetPlayerInfos(region, player)
-      if db[serverRegion].count_documents({'usernames': playerInfos['name']}) == 0: #if username is already in db
-        twitterInput = input(f"""is '{playerInfos['twitter']}' {playerInfos['name']}'s twitter tag? If so, type 'y', else please enter his Twitter tag: """)
-        if twitterInput != 'y':
-          playerInfos['twitter'] = twitterInput
-          if db[serverRegion].count_documents({'twitter': playerInfos['twitter']}) == 0:
-            db[serverRegion].insert_one({'twitter': twitterTag, "usernames": [playerInfos['name']], "pr" : [playerInfos['points']], "rank" : [playerInfos['rank']]})
-          else:
-            db[serverRegion].update_one({ "twitter": playerInfos['twitter'] }, { "$push": {"usernames": playerInfos['name'], "pr": playerInfos['points'], 'rank': playerInfos['rank'] } })
-        else:
-          if db[serverRegion].count_documents({'twitter': playerInfos['twitter']}) == 0:
-            db[serverRegion].insert_one({'twitter': twitterTag, "usernames": [playerInfos['name']], "pr" : [playerInfos['points']], "rank" : [playerInfos['rank']]})
-          else:
-            db[serverRegion].update_one({ "twitter": playerInfos['twitter'] }, { "$push": {"usernames": playerInfos['name'], "pr": playerInfos['points'], 'rank': playerInfos['rank'] } })
-      else: 
+      print(playerInfos)
+      if db[serverRegion].count_documents({'usernames': playerInfos['name']}) == 1: #player already stored
         db[serverRegion].update_one({ "usernames": playerInfos['name'] }, { "$push": {"pr": playerInfos['points'], 'rank': playerInfos['rank']}})
+      else: #first player's record
+        if (SequenceMatcher(None, twitterTags[iTwitterTag], playerInfos['name'].lower()).ratio() > 0.4): #check Twitter tag and username similatity
+          db[serverRegion].insert_one({'twitter': twitterTags[iTwitterTag], "usernames": [playerInfos['name']], "pr" : [playerInfos['points']], "rank" : [playerInfos['rank']]})
+        else:
+          twitterInput = input(f"""is '{twitterTags[iTwitterTag]}' {playerInfos['name']}'s Twitter tag? Is so, type 'y', otherwise enter his tag: """)
+          if twitterInput == 'y':
+            db[serverRegion].insert_one({'twitter': twitterTags[iTwitterTag], "usernames": [playerInfos['name']], "pr" : [playerInfos['points']], "rank" : [playerInfos['rank']]})
+          else:
+            db[serverRegion].insert_one({'twitter': twitterInput, "usernames": [playerInfos['name']], "pr" : [playerInfos['points']], "rank" : [playerInfos['rank']]})
+            iTwitterTag = iTwitterTag -1
+        iTwitterTag = iTwitterTag + 1
 
 def getHighestPrGain (data: dict) -> dict :
   highestDelta = {
@@ -133,12 +118,38 @@ def getHighestRankLose(data: dict) -> dict :
       lowestDelta['delta'] = rankDelta
   return lowestDelta
 
-def top5Diffs(data: dict) -> dict :
-  highestDelta = {
-    "twitter" : data[0]['twitter'],
-    "delta" : (data[0]['pr'][-1] - data[0]['pr'][-2])
+def top5Diffs(data: dict, region: str) -> dict :
+  currentWeek = {
+    'top1' : next((player for player in data if player['rank'][-1] == 1)),
+    'top2' : next((player for player in data if player['rank'][-1] == 2)),
+    'top3' : next((player for player in data if player['rank'][-1] == 3)),
+    'top4' : next((player for player in data if player['rank'][-1] == 4)),
+    'top5' : next((player for player in data if player['rank'][-1] == 5))
   }
-  return highestDelta
+
+  results: dict[str, Any] = {
+    'top1' : {
+      'twitter': currentWeek['top1']['twitter'],
+      'lastWeekRank': db[f"fn{region}players"].find_one({'usernames' : currentWeek['top1']['usernames'][-1]})['rank'][-2] # type: ignore
+    },
+    'top2' : {
+      'twitter': currentWeek['top2']['twitter'],
+      'lastWeekRank': db[f"fn{region}players"].find_one({'usernames' : currentWeek['top2']['usernames'][-1]})['rank'][-2] # type: ignore
+    },
+    'top3' : {
+      'twitter': currentWeek['top3']['twitter'],
+      'lastWeekRank': db[f"fn{region}players"].find_one({'usernames' : currentWeek['top3']['usernames'][-1]})['rank'][-2] # type: ignore
+    },
+    'top4' : {
+      'twitter': currentWeek['top4']['twitter'],
+      'lastWeekRank': db[f"fn{region}players"].find_one({'usernames' : currentWeek['top4']['usernames'][-1]})['rank'][-2] # type: ignore
+    },
+    'top5' : {
+      'twitter': currentWeek['top5']['twitter'],
+      'lastWeekRank': db[f"fn{region}players"].find_one({'usernames' : currentWeek['top5']['usernames'][-1]})['rank'][-2] # type: ignore
+    }
+  }
+  return results
 
 def newLeader(data: dict) -> dict :
   previousWeekLeader: dict= next((player for player in data if player['rank'][-2] == 1))
@@ -158,16 +169,25 @@ def newLeader(data: dict) -> dict :
 
 def getDiffs():
   print('[*] getting diffs')
-  for serverRegion in FN_COLLECTIONS:
-    region = serverRegion.removeprefix('fn').removesuffix('players')
+  for serverRegion, region in zip(FN_COLLECTIONS, REGIONS):
     print(f'\t[*] {region}')
     
-    data = []
-    for document in db[serverRegion].find():
-      data.append(document)
-    data.pop(0)
+    data = [document for document in db[serverRegion].find()]
+    print(top5Diffs(data, region))
+    try:
+      print(getHighestPrGain(data))
+      print(getHighestRankGain(data))
+      print(getHighestRankLose(data))
+      print(newLeader(data))
+      print(top5Diffs(data, region))
+    except IndexError:
+      print('too few data, wait for a week :)')
 
-    print(getHighestPrGain(data))
-    print(getHighestRankGain(data))
-    print(getHighestRankLose(data))
-    print(newLeader(data))
+def runModes(mode: str):
+  if mode == 'populateDbs':
+    populateDbs()
+  elif mode == 'getDiffs':
+    getDiffs()
+  else:
+    populateDbs()
+    getDiffs()
