@@ -29,14 +29,16 @@ If you need to revert any changes to the database, use helper's CLI calling `hel
 
 ## Version History
 
+* 1.1
+  * Bug Fixes
 * 1.0 - 1.0a
-    * Various bug fixes and optimizations
-    * Quality-of-Life update: `setup.py`, `run.py` and `helper.py`
-    * CLI with documentation
+  * Various bug fixes and optimizations
+  * Quality-of-Life update: `setup.py`, `run.py` and `helper.py`
+  * CLI with documentation
 * B0.1
-    * Implementation of the core functionalities of the project
+  * Implementation of the core functionalities of the project
 * A0.1
-    * Initial Release
+  * Initial Release
 
 ## License
 
