@@ -9,6 +9,8 @@ def main():
   print(f'fnTracking v{VERSION}')
   trnKey = input('Enter your TRN Api key: ')
   fn_db = input('Enter a name for the database: ')
+
+  #get user's region preferences
   regions = []
   regions.append('EU') if ((input('Do you want to track EU players? y/n: ')) == 'y') else None
   regions.append('NAW') if ((input('Do you want to track NAW players? y/n: ')) == 'y') else None
@@ -24,9 +26,6 @@ def main():
     f.close()
   else:
     print('Enter a valid TRA Api key.\nbye :)')
-
-  from models import runModes
-  #runModes('all')
 
 
 if __name__ == "__main__":

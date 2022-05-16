@@ -24,8 +24,8 @@ def getPlayerInfos(region: str, name: str):
   try:
     return json.loads(html.text)
   except:
+    print(f'https://api.fortnitetracker.com/v1/powerrankings/pc/{region}/{name}')
     print(f'Api-side issue, please revert changes using the helper.py script and try again later. Error code: {html.status_code}')
-    exit()
 
 def getTop100orUnder_players(region: str, entries: int) -> list:
   if entries <= 100:
@@ -64,11 +64,10 @@ def populateDbs() -> None:
     twitterTags = getTop100orUnder_twitterTags(region, 50)
     iTwitterTag = 0
     for player in players:
-      print(player)
       playerInfos = safeGetPlayerInfos(region, player)
-      print(playerInfos)
       if db[serverRegion].count_documents({'usernames': playerInfos['name']}) == 1: #player already stored
         db[serverRegion].update_one({ "usernames": playerInfos['name'] }, { "$push": {"pr": playerInfos['points'], 'rank': playerInfos['rank']}})
+        iTwitterTag = iTwitterTag + 1
       else: #first player's record
         if (SequenceMatcher(None, twitterTags[iTwitterTag], playerInfos['name'].lower()).ratio() > 0.4): #check Twitter tag and username similatity
           db[serverRegion].insert_one({'twitter': twitterTags[iTwitterTag], "usernames": [playerInfos['name']], "pr" : [playerInfos['points']], "rank" : [playerInfos['rank']]})
@@ -87,10 +86,13 @@ def getHighestPrGain (data: dict) -> dict :
     "delta" : (data[0]['pr'][-1] - data[0]['pr'][-2])
   }
   for player in data:
-    prDelta = (player['pr'][-1] - player['pr'][-2])
-    if prDelta > highestDelta['delta']:
-      highestDelta['twitter'] = player['twitter']
-      highestDelta['delta'] = prDelta
+    try:
+      prDelta = (player['pr'][-1] - player['pr'][-2])
+      if prDelta > highestDelta['delta']:
+        highestDelta['twitter'] = player['twitter']
+        highestDelta['delta'] = prDelta
+    except IndexError: #player has only one record
+      pass
   return highestDelta
 
 
@@ -100,10 +102,13 @@ def getHighestRankGain (data: dict) -> dict :
     "delta" : (data[0]['rank'][-2] - data[0]['rank'][-1])
   }
   for player in data:
-    rankDelta = (player['rank'][-2] - player['rank'][-1])
-    if rankDelta > highestDelta['delta']:
-      highestDelta['twitter'] = player['twitter']
-      highestDelta['delta'] = rankDelta
+    try:
+      rankDelta = (player['rank'][-2] - player['rank'][-1])
+      if rankDelta > highestDelta['delta']:
+        highestDelta['twitter'] = player['twitter']
+        highestDelta['delta'] = rankDelta
+    except IndexError: #player has only one record
+      pass
   return highestDelta
 
 def getHighestRankLose(data: dict) -> dict :
@@ -112,48 +117,47 @@ def getHighestRankLose(data: dict) -> dict :
     "delta" : (data[0]['rank'][-2] - data[0]['rank'][-1])
   }
   for player in data:
-    rankDelta = (player['rank'][-2] - player['rank'][-1])
-    if rankDelta < lowestDelta['delta']:
-      lowestDelta['twitter'] = player['twitter']
-      lowestDelta['delta'] = rankDelta
+    try:
+      rankDelta = (player['rank'][-2] - player['rank'][-1])
+      if rankDelta < lowestDelta['delta']:
+        lowestDelta['twitter'] = player['twitter']
+        lowestDelta['delta'] = rankDelta
+    except IndexError: #player has only one record
+      pass
   return lowestDelta
 
 def top5Diffs(data: dict, region: str) -> dict :
-  currentWeek = {
-    'top1' : next((player for player in data if player['rank'][-1] == 1)),
-    'top2' : next((player for player in data if player['rank'][-1] == 2)),
-    'top3' : next((player for player in data if player['rank'][-1] == 3)),
-    'top4' : next((player for player in data if player['rank'][-1] == 4)),
-    'top5' : next((player for player in data if player['rank'][-1] == 5))
-  }
-
-  results: dict[str, Any] = {
-    'top1' : {
-      'twitter': currentWeek['top1']['twitter'],
-      'lastWeekRank': db[f"fn{region}players"].find_one({'usernames' : currentWeek['top1']['usernames'][-1]})['rank'][-2] # type: ignore
-    },
-    'top2' : {
-      'twitter': currentWeek['top2']['twitter'],
-      'lastWeekRank': db[f"fn{region}players"].find_one({'usernames' : currentWeek['top2']['usernames'][-1]})['rank'][-2] # type: ignore
-    },
-    'top3' : {
-      'twitter': currentWeek['top3']['twitter'],
-      'lastWeekRank': db[f"fn{region}players"].find_one({'usernames' : currentWeek['top3']['usernames'][-1]})['rank'][-2] # type: ignore
-    },
-    'top4' : {
-      'twitter': currentWeek['top4']['twitter'],
-      'lastWeekRank': db[f"fn{region}players"].find_one({'usernames' : currentWeek['top4']['usernames'][-1]})['rank'][-2] # type: ignore
-    },
-    'top5' : {
-      'twitter': currentWeek['top5']['twitter'],
-      'lastWeekRank': db[f"fn{region}players"].find_one({'usernames' : currentWeek['top5']['usernames'][-1]})['rank'][-2] # type: ignore
+  currentWeek = {}
+  results = {}
+  try:
+    currentWeek = {
+      'top1' : next((player for player in data if player['rank'][-1] == 1)),
+      'top2' : next((player for player in data if player['rank'][-1] == 2)),
+      'top3' : next((player for player in data if player['rank'][-1] == 3)),
+      'top4' : next((player for player in data if player['rank'][-1] == 4)),
+      'top5' : next((player for player in data if player['rank'][-1] == 5))
     }
-  }
+  except IndexError: #player has only one record
+    pass
+    print(currentWeek)
+  for index, top in enumerate(currentWeek.items()):
+    if len(top[1]['pr']) == 1: #pr
+      results[f'top{index+1}'] = {
+        'twitter' : top[1]['twitter'], 
+        'news': 'first entry in top5 for: '+top[1]['twitter']}
+    else:
+      results[f'top{index+1}'] = { #type: ignore
+        'twitter': currentWeek[f'top{index+1}']['twitter'],
+        'lastWeekRank': db[f"fn{region}players"].find_one({'usernames' : currentWeek[f'top{index+1}']['usernames'][-1]})['rank'][-2] # type: ignore
+      }
   return results
 
 def newLeader(data: dict) -> dict :
-  previousWeekLeader: dict= next((player for player in data if player['rank'][-2] == 1))
-  currentWeekLeader: dict= next((player for player in data if player['rank'][-1] == 1))
+  try: 
+    previousWeekLeader: dict= next((player for player in data if player['rank'][-2] == 1))
+    currentWeekLeader: dict= next((player for player in data if player['rank'][-1] == 1))
+  except IndexError: #player has only one record
+      pass
   diffs: dict = {
     'newLeader' : {
       'twitter' : currentWeekLeader['twitter'],
@@ -173,15 +177,11 @@ def getDiffs():
     print(f'\t[*] {region}')
     
     data = [document for document in db[serverRegion].find()]
-    print(top5Diffs(data, region))
-    try:
-      print(getHighestPrGain(data))
-      print(getHighestRankGain(data))
-      print(getHighestRankLose(data))
-      print(newLeader(data))
-      print(top5Diffs(data, region))
-    except IndexError:
-      print('too few data, wait for a week :)')
+    print('\t\t[*]getHighestPrGain', getHighestPrGain(data))
+    print('\t\t[*]getHighestRankGain', getHighestRankGain(data))
+    print('\t\t[*]getHighestRankLose', getHighestRankLose(data))
+    print('\t\t[*]newLeader', newLeader(data))
+    print('\t\t[*]top5Diffs', top5Diffs(data, region))
 
 def runModes(mode: str):
   if mode == 'populateDbs':
