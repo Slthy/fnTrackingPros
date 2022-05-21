@@ -22,7 +22,7 @@ def main():
   #check api key
   if (requests.get(f'https://api.fortnitetracker.com/v1/powerrankings/pc/NAE/Ninja', {'TRN-Api-Key': trnKey}).json() != {'message': 'Invalid authentication credentials'}):
     f = open(".env", "a")
-    f.write(f"""TRN_API_KEY = "{trnKey}"\nFN_DB = "{fn_db}"\nREGIONS = {regions}\nFN_COLLECTIONS={[f'fn{region}players' for region in regions ]}""")
+    f.write(f"""TRN_API_KEY = "{trnKey}"\nFN_DB = "{fn_db}"\nREGIONS = {regions}""")
     f.close()
   else:
     print('Enter a valid TRA Api key.\nbye :)')

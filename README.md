@@ -29,6 +29,10 @@ If you need to revert any changes to the database, use helper's CLI calling `hel
 
 ## Version History
 
+* 1.2
+  * Refactoring update:
+    * Bug Fixes
+    * Now the tracker can handle the case where a player goes below the top50 and when a player enters in the top50 for the first time  (see `fixUnderTop50` method in `\models.py`)
 * 1.1
   * Bug Fixes
 * 1.0 - 1.0a
@@ -40,9 +44,23 @@ If you need to revert any changes to the database, use helper's CLI calling `hel
 * A0.1
   * Initial Release
 
+## TODO - feel free to make pull requests
+
+### Future updates - asap:
+  * Unit testing on all the project
+  * Better CLI arguments
+  * Possible tweet automation
+
+### Next competitive season updates:
+  * Full release (version 2.0)
+  * Enhanced data storage
+  * New statistics
+  * Possible player records increase, up to top100
+
+
 ## License
 
-This project is licensed under the [NAME HERE] License - see the LICENSE.md file for details
+This project is licensed under the 'Creative Commons Legal Code' License - see the LICENSE.md file for details
 
 ## Acknowledgments
 
