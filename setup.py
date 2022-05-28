@@ -1,8 +1,8 @@
+import os, requests, re
+from os.path import join, dirname
+from dotenv import load_dotenv
+
 def main():
-  import os, requests, re
-  from os.path import join, dirname
-  from dotenv import load_dotenv
-  
   version_path = join(dirname(__file__), 'version')
   load_dotenv(version_path)
   VERSION: str = os.environ['VERSION']
