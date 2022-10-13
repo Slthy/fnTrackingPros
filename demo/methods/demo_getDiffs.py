@@ -11,6 +11,7 @@ REGIONS = ast.literal_eval(os.environ.get("REGIONS")) # type: ignore
 FN_COLLECTIONS = [f'fn{region}players' for region in REGIONS]
 CLIENT = MongoClient('localhost', 27017) # type: MongoClient
 DB = CLIENT[FN_DB]
+
 def getHighestPrGain (data: dict) -> dict :
   highestDelta = {}
   try:
@@ -85,13 +86,14 @@ def top5Diffs(data: dict, region: str) -> dict :
         'twitter' : top[1]['twitter'], 
         'news': 'first entry in top5 for: '+top[1]['twitter']}
     else: #mypy workaround, check if "username" field exist, if so do things, else raise exception
-      if ((playerlastWeek := DB[f"fn{region}players"].find_one({'usernames' : lastWeek[f'top{index+1}']['usernames'][-1]})) is not None) and ((previousWeek := DB[f"fn{region}players"].find_one({'usernames' : lastWeek[f'top{index+1}']['usernames'][-1]})) is not None):
-        playerlastWeekRank = playerlastWeek['rank'][-1]
-        playerlastWeek = previousWeek['rank'][-2]
-        if playerlastWeekRank != playerlastWeek:
+      if ((currentWeek := DB[f"fn{region}players"].find_one({'usernames' : lastWeek[f'top{index+1}']['usernames'][-1]})) is not None) and ((previousWeek := DB[f"fn{region}players"].find_one({'usernames' : lastWeek[f'top{index+1}']['usernames'][-1]})) is not None):
+        currentWeekRank = currentWeek['rank'][-1]
+        previousWeekRank = previousWeek['rank'][-2]
+        #print(currentWeekRank, previousWeekRank)
+        if currentWeekRank != previousWeekRank:
           results[f'top{index+1}'] = {
             'twitter': lastWeek[f'top{index+1}']['twitter'],
-            'playerlastWeekRank': playerlastWeekRank
+            'playerlastWeekRank': previousWeekRank
           }
       else:
         raise Exception

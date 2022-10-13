@@ -85,13 +85,14 @@ def top5Diffs(data: dict, region: str) -> dict :
         'twitter' : top[1]['twitter'], 
         'news': 'first entry in top5 for: '+top[1]['twitter']}
     else: #mypy workaround, check if "username" field exist, if so do things, else raise exception
-      if ((playerlastWeek := DB[f"fn{region}players"].find_one({'usernames' : lastWeek[f'top{index+1}']['usernames'][-1]})) is not None) and ((previousWeek := DB[f"fn{region}players"].find_one({'usernames' : lastWeek[f'top{index+1}']['usernames'][-1]})) is not None):
-        playerlastWeekRank = playerlastWeek['rank'][-1]
-        playerlastWeek = previousWeek['rank'][-2]
-        if playerlastWeekRank != playerlastWeek:
+      if ((currentWeek := DB[f"fn{region}players"].find_one({'usernames' : lastWeek[f'top{index+1}']['usernames'][-1]})) is not None) and ((previousWeek := DB[f"fn{region}players"].find_one({'usernames' : lastWeek[f'top{index+1}']['usernames'][-1]})) is not None):
+        currentWeekRank = currentWeek['rank'][-1]
+        previousWeekRank = previousWeek['rank'][-2]
+        #print(currentWeekRank, previousWeekRank)
+        if currentWeekRank != previousWeekRank:
           results[f'top{index+1}'] = {
             'twitter': lastWeek[f'top{index+1}']['twitter'],
-            'playerlastWeekRank': playerlastWeekRank
+            'playerlastWeekRank': previousWeekRank
           }
       else:
         raise Exception
@@ -115,3 +116,15 @@ def newLeader(data: dict) -> dict :
     'isSame' : lastWeekLeader['twitter'] == previousWeekLeader['twitter']
   }
   return diffs
+
+'''def prepDemo() -> None:
+  print(f'[*] updating databases')
+  for region in REGIONS:
+    print(f'\t[*] {region}')
+    players = getTop100orUnder_players(region, 20)
+    twitterTags = getTop100orUnder_twitterTags(region, 20)
+    playerInfos = []
+    for player in players:
+      playerInfos.append(safeGetPlayerInfos(region, player))
+    with open("data.txt", "a") as f:
+      f.write(f"[*]{region}\n\n\t{players}\n\n\n\t{twitterTags}\n\n\n\t{playerInfos}\n\n\n\n")''' 
